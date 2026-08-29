@@ -385,6 +385,17 @@ helm-test: helm-package  ## Test the helm chart with a dummy version.
 	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q -- "extProcLogFormat=text"
 	@$(GO_TOOL) helm template ${HELM_CHART_PATH} --set controller.logFormat=json --set extProc.logFormat=json | grep -q -- "-logFormat=json"
 	@$(GO_TOOL) helm template ${HELM_CHART_PATH} --set controller.logFormat=json --set extProc.logFormat=json | grep -q -- "extProcLogFormat=json"
+# Issue #2591: the webhook TLS Secret must be suppressible so a GitOps renderer can supply it out
+# of band -- Helm `lookup` returns empty without cluster access, so with createSecret=true the
+# chart re-mints the cert on every render. Each assertion below fails on the parent commit; keep it
+# that way, an assertion that also passes without the fix is not a test.
+# Default still renders the Secret, createSecret=false suppresses it.
+	@{ $(GO_TOOL) helm template ${HELM_CHART_PATH} -s templates/admission_webhook.yaml | grep -q "^kind: Secret" && ! $(GO_TOOL) helm template ${HELM_CHART_PATH} -s templates/admission_webhook.yaml --set controller.mutatingWebhook.createSecret=false | grep -q "^kind: Secret"; } || { echo "FAIL: createSecret must gate the webhook Secret (default renders it, false suppresses it)"; exit 1; }
+# The issue's own path: an externally managed secret is mounted and the chart renders none over it.
+	@{ $(GO_TOOL) helm template ${HELM_CHART_PATH} --set controller.mutatingWebhook.tlsCertSecretName=my-external-secret --set controller.mutatingWebhook.createSecret=false | grep -q "secretName: my-external-secret" && ! $(GO_TOOL) helm template ${HELM_CHART_PATH} --set controller.mutatingWebhook.tlsCertSecretName=my-external-secret --set controller.mutatingWebhook.createSecret=false | grep -q "^kind: Secret"; } || { echo "FAIL: with createSecret=false the chart must mount tlsCertSecretName and render no Secret of its own"; exit 1; }
+# A string is truthy in Go templates, so a stringly-typed false must be rejected, not ignored.
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} -s templates/admission_webhook.yaml --set-string controller.mutatingWebhook.createSecret=false 2>&1 | grep -q "createSecret must be a boolean" || { echo "FAIL: a string createSecret must be rejected, not silently treated as true"; exit 1; }
+	@$(GO_TOOL) helm show values ${HELM_CHART_PATH} | grep -q "^    createSecret:" || { echo "FAIL: values.yaml must document createSecret"; exit 1; }
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push

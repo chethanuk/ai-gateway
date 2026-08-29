@@ -61,6 +61,12 @@ spec:
   selfSigned: {}
 ---
 {{- else }}
+{{/* Any non-empty string ("false", "flase", --set-string) is truthy in Go templates and
+     would silently re-render the Secret, so reject anything that is not a real boolean. */}}
+{{- if not (kindIs "bool" .Values.controller.mutatingWebhook.createSecret) }}
+{{- fail "controller.mutatingWebhook.createSecret must be a boolean: use true or false, not a quoted string or null" }}
+{{- end }}
+{{- if .Values.controller.mutatingWebhook.createSecret }}
 {{- $caCrt := "" }}
 {{- $tlsCrt := "" }}
 {{- $tlsKey := "" }}
@@ -94,4 +100,5 @@ data:
   {{ .Values.controller.mutatingWebhook.tlsCertName }}: {{ $tlsCrt }}
   {{ .Values.controller.mutatingWebhook.tlsKeyName }}: {{ $tlsKey }}
 ---
+{{- end }}
 {{- end }}
