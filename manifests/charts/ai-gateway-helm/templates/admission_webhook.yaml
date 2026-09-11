@@ -58,6 +58,12 @@ metadata:
 spec:
   selfSigned: {}
 {{- else }}
+{{/* Any non-empty string ("false", "flase", --set-string) is truthy in Go templates and
+     would silently re-render the Secret, so reject anything that is not a real boolean. */}}
+{{- if not (kindIs "bool" .Values.controller.mutatingWebhook.createSecret) }}
+{{- fail "controller.mutatingWebhook.createSecret must be a boolean: use true or false, not a quoted string or null" }}
+{{- end }}
+{{- if .Values.controller.mutatingWebhook.createSecret }}
 {{- $caCrt := "" }}
 {{- $tlsCrt := "" }}
 {{- $tlsKey := "" }}
@@ -121,4 +127,5 @@ webhooks:
     admissionReviewVersions: ["v1"]
     timeoutSeconds: 10
     failurePolicy: Fail
+{{- end }}
 {{- end }}
